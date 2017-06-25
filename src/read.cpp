@@ -77,6 +77,7 @@ std::unique_ptr<ReadInfo> copyReadInfo(std::shared_ptr<ReadInfo> read_info) {
 
 ReadInfo::ReadInfo(uint64_t id, uint32_t read_length, std::vector<uint32_t>& mappings)
         : id_(id), begin_(0), end_(read_length), coverage_median_(0), is_valid_(true),
+        is_chimeric_(0), is_left_repeat_(0), is_right_repeat_(0),
         coverage_graph_(read_length + 1, 0), coverage_hills_() {
 
     update_coverage_graph(mappings);

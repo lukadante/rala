@@ -112,9 +112,19 @@ uint32_t classifyOverlap(const std::shared_ptr<Overlap>& overlap) {
     return 4; // b to a overlap
 }
 
+void readClasses(std::vector<std::pair<uint32_t, uint32_t>>& dst, const std::string& path) {
+
+    std::ifstream infile(path);
+    uint32_t read_id, read_class;
+    while (infile >> read_id >> read_class) {
+        dst.emplace_back(read_id - 1, read_class);
+    }
+}
+
 void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::shared_ptr<ReadInfo>>& read_infos,
     std::vector<std::shared_ptr<Overlap>>& overlaps, double& dataset_coverage_median,
     const std::string& reads_path, const std::string& overlaps_path, uint32_t overlap_type,
+    std::vector<std::pair<uint32_t, uint32_t>> read_classes,
     std::shared_ptr<thread_pool::ThreadPool> thread_pool) {
 
     fprintf(stderr, "Preprocessing data {\n");
@@ -245,6 +255,22 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
     load_timer.print("    time =");
     fprintf(stderr, "  }\n");
 
+    for (const auto& it: read_classes) {
+        switch (it.second) {
+            case 0: // chimeric
+                read_infos[it.first]->set_chimeric();
+                break;
+            case 1: // left repeat
+                read_infos[it.first]->set_left_repeat();
+                break;
+            case 2: // right repeat
+                read_infos[it.first]->set_right_repeat();
+                break;
+            default:
+                break;
+        }
+    }
+
     uint32_t num_prefiltered_reads = 0;
     std::vector<bool> is_valid_read(read_infos.size(), true);
     for (uint32_t i = 0; i < read_infos.size(); ++i) {
@@ -255,7 +281,7 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
     }
 
     // find coverage medians
-    {
+    if (read_classes.empty()) {
         fprintf(stderr, "  Calculating coverage madians {\n");
         Timer timer;
         timer.start();
@@ -295,7 +321,7 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
     }
 
     // find chimeric reads by looking for tight coverage pits
-    {
+    if (read_classes.empty()) {
         fprintf(stderr, "  Chimeric check {\n");
         Timer timer;
         timer.start();
@@ -334,6 +360,12 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
         fprintf(stderr, "    number of chimeric reads = %u\n", num_chimeric_reads);
         timer.print("    time:");
         fprintf(stderr, "  }\n");
+    } else {
+        for (uint32_t i = 0; i < read_infos.size(); ++i) {
+            if (read_infos[i]->is_chimeric()) {
+                is_valid_read[i] = false;
+            }
+        }
     }
 
     // find longest contiguous read region which has coverage larger than kMinCoverage
@@ -404,7 +436,7 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
     }
 
     // correct coverage graphs
-    {
+    if (read_classes.empty()) {
         fprintf(stderr, "  Correcting coverage graphs {\n");
         Timer timer;
         timer.start();
@@ -529,7 +561,7 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
     }*/
 
     // find coverage hills which represent repetitive regions
-    {
+    if (read_classes.empty()) {
         fprintf(stderr, "  Hill detection {\n");
         Timer timer;
         timer.start();
@@ -590,6 +622,7 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
         bioparser::createReader<Overlap, bioparser::MhapReader>(overlaps_path) :
         bioparser::createReader<Overlap, bioparser::PafReader>(overlaps_path);
 
+    uint32_t num_repeat_overlaps = 0;
     while (true) {
         uint64_t current_overlap_id = overlaps.size();
         auto status = oreader->read_objects(overlaps, kChunkSize);
@@ -604,7 +637,7 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
                 continue;
             }
 
-            if (read_infos[it->a_id()]->coverage_hills().size() != 0) {
+            if (read_classes.empty() && read_infos[it->a_id()]->coverage_hills().size() != 0) {
                 uint32_t begin = it->a_rc() ? it->a_length() - it->a_end() : it->a_begin();
                 uint32_t end = it->a_rc() ? it->a_length() - it->a_begin() : it->a_end();
 
@@ -616,17 +649,19 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
                         if (h.first < 0.1 * valid_read_length + read_infos[it->a_id()]->begin()) {
                             if (end < h.second + fuzz) {
                                 is_valid_overlap[it->id()] = false;
+                                ++num_repeat_overlaps;
                             }
                         } else if (h.second > 0.9 * valid_read_length + read_infos[it->a_id()]->begin()) {
                             if (begin > h.first - fuzz) {
                                 is_valid_overlap[it->id()] = false;
+                                ++num_repeat_overlaps;
                             }
                         }
                     }
                 }
             }
 
-            if (read_infos[it->b_id()]->coverage_hills().size() != 0) {
+            if (read_classes.empty() && read_infos[it->b_id()]->coverage_hills().size() != 0) {
                 uint32_t begin = it->b_rc() ? it->b_length() - it->b_end() : it->b_begin();
                 uint32_t end = it->b_rc() ? it->b_length() - it->b_begin() : it->b_end();
 
@@ -638,10 +673,12 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
                         if (h.first < 0.1 * valid_read_length + read_infos[it->b_id()]->begin()) {
                             if (end < h.second + fuzz) {
                                 is_valid_overlap[it->id()] = false;
+                                ++num_repeat_overlaps;
                             }
                         } else if (h.second > 0.9 * valid_read_length + read_infos[it->b_id()]->begin()) {
                             if (begin > h.first - fuzz) {
                                 is_valid_overlap[it->id()] = false;
+                                ++num_repeat_overlaps;
                             }
                         }
                     }
@@ -678,6 +715,24 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
                 default:
                     break;
             }
+
+            if (!read_classes.empty()) {
+                if (it->type() == 3) { // a to b overlap
+                    bool is_a_right_repeat = it->a_rc() ? read_infos[it->a_id()]->is_left_repeat() : read_infos[it->a_id()]->is_right_repeat();
+                    bool is_b_left_repeat = it->b_rc() ? read_infos[it->b_id()]->is_right_repeat() : read_infos[it->b_id()]->is_left_repeat();
+                    if (is_a_right_repeat && is_b_left_repeat) {
+                        is_valid_overlap[it->id()] = false;
+                        ++num_repeat_overlaps;
+                    }
+                } else if (it->type() == 4) { // b to a overlap
+                    bool is_a_left_repeat = it->a_rc() ? read_infos[it->a_id()]->is_right_repeat() : read_infos[it->a_id()]->is_left_repeat();
+                    bool is_b_right_repeat = it->b_rc() ? read_infos[it->b_id()]->is_left_repeat() : read_infos[it->b_id()]->is_right_repeat();
+                    if (is_a_left_repeat && is_b_right_repeat) {
+                        is_valid_overlap[it->id()] = false;
+                        ++num_repeat_overlaps;
+                    }
+                }
+            }
         }
 
         shrinkVector(overlaps, current_overlap_id, is_valid_overlap);
@@ -687,6 +742,8 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
         }
     }
     oreader.reset();
+
+    fprintf(stderr, "    number of repeat overlaps = %u\n", num_repeat_overlaps);
 
     // check if all non valid overlaps are deleted
     {

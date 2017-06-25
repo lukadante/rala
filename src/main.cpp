@@ -16,6 +16,8 @@ int main(int argc, char** argv) {
     uint32_t overlap_type = argc > 4 ? atoi(argv[4]) : 0;
     std::string overlaps_reference_path = argc > 5 ? argv[5] : "";
 
+    std::vector<std::pair<uint32_t, uint32_t>> read_clases;
+
     switch (atoi(argv[1])) {
         case 1:
             findChimericReads(reads_path, overlaps_path, overlap_type);
@@ -29,6 +31,8 @@ int main(int argc, char** argv) {
         case 4:
             joinFastqFiles(reads_path, overlaps_path);
             return 0;
+        case 5:
+            readClasses(read_clases, overlaps_reference_path);
         case 0:
         default:
             break;
@@ -47,7 +51,7 @@ int main(int argc, char** argv) {
     }
 
     preprocessData(reads, read_infos, overlaps, median, reads_path, overlaps_path,
-        overlap_type, thread_pool);
+        overlap_type, read_clases, thread_pool);
 
     auto graph = createGraph(reads, overlaps);
     overlaps.clear();

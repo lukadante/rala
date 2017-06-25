@@ -85,6 +85,30 @@ class ReadInfo {
             return id_;
         }
 
+        void set_chimeric() {
+            is_chimeric_ = true;
+        }
+
+        bool is_chimeric() const {
+            return is_chimeric_;
+        }
+
+        void set_left_repeat() {
+            is_left_repeat_ = true;
+        }
+
+        bool is_left_repeat() const {
+            return is_left_repeat_;
+        }
+
+        void set_right_repeat() {
+            is_right_repeat_ = true;
+        }
+
+        bool is_right_repeat() const {
+            return is_right_repeat_;
+        }
+
         /*!
          * @brief Returns begin_ of the valid coverage interval [begin_, end_>
          */
@@ -201,6 +225,9 @@ class ReadInfo {
         uint32_t end_;
         uint16_t coverage_median_;
         bool is_valid_;
+        bool is_chimeric_;
+        bool is_left_repeat_;
+        bool is_right_repeat_;
         std::vector<uint16_t> coverage_graph_;
         std::vector<std::pair<uint32_t, uint32_t>> coverage_hills_;
 };
