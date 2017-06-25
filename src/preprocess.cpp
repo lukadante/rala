@@ -281,7 +281,7 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
     }
 
     // find coverage medians
-    if (read_classes.empty()) {
+    {
         fprintf(stderr, "  Calculating coverage madians {\n");
         Timer timer;
         timer.start();
@@ -361,11 +361,14 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
         timer.print("    time:");
         fprintf(stderr, "  }\n");
     } else {
+        uint32_t num_chimeric_reads = 0;
         for (uint32_t i = 0; i < read_infos.size(); ++i) {
-            if (read_infos[i]->is_chimeric()) {
+            if (read_infos[i] != nullptr && read_infos[i]->is_chimeric()) {
                 is_valid_read[i] = false;
+                ++num_chimeric_reads;
             }
         }
+        fprintf(stderr, "    number of chimeric reads = %u\n", num_chimeric_reads);
     }
 
     // find longest contiguous read region which has coverage larger than kMinCoverage

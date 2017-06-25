@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
     uint32_t overlap_type = argc > 4 ? atoi(argv[4]) : 0;
     std::string overlaps_reference_path = argc > 5 ? argv[5] : "";
 
-    std::vector<std::pair<uint32_t, uint32_t>> read_clases;
+    std::vector<std::pair<uint32_t, uint32_t>> read_classes;
 
     switch (atoi(argv[1])) {
         case 1:
@@ -32,7 +32,8 @@ int main(int argc, char** argv) {
             joinFastqFiles(reads_path, overlaps_path);
             return 0;
         case 5:
-            readClasses(read_clases, overlaps_reference_path);
+            readClasses(read_classes, overlaps_reference_path);
+            break;
         case 0:
         default:
             break;
@@ -45,13 +46,13 @@ int main(int argc, char** argv) {
     std::vector<std::shared_ptr<ReadInfo>> read_infos;
     double median;
 
-    if (!overlaps_reference_path.empty()) {
+    if (read_classes.empty() && !overlaps_reference_path.empty()) {
         preprocessDataWithReference(read_infos, overlaps_reference_path,
             overlap_type, thread_pool);
     }
 
     preprocessData(reads, read_infos, overlaps, median, reads_path, overlaps_path,
-        overlap_type, read_clases, thread_pool);
+        overlap_type, read_classes, thread_pool);
 
     auto graph = createGraph(reads, overlaps);
     overlaps.clear();
