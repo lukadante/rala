@@ -256,6 +256,9 @@ void preprocessData(std::vector<std::shared_ptr<Read>>& reads, std::vector<std::
     fprintf(stderr, "  }\n");
 
     for (const auto& it: read_classes) {
+        if (it.first >= read_classes.size() || read_infos[it.first] == nullptr) {
+            continue;
+        }
         switch (it.second) {
             case 0: // chimeric
                 read_infos[it.first]->set_chimeric();
