@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <iterator>
 
 #include "sequence.hpp"
 #include "overlap.hpp"
@@ -180,7 +182,7 @@ Graph::Edge::~Edge() {
 }
 
 std::unique_ptr<Graph> createGraph(const std::string& sequences_path,
-    const std::string& overlaps_path, uint32_t num_threads) {
+    const std::string& overlaps_path, const std::string& mcl_out_path, int32_t mcl_group, uint32_t num_threads) {
 
     std::unique_ptr<bioparser::Parser<Sequence>> sparser = nullptr;
     std::unique_ptr<bioparser::Parser<Overlap>> oparser = nullptr;
@@ -222,16 +224,22 @@ std::unique_ptr<Graph> createGraph(const std::string& sequences_path,
     }
 
     return std::unique_ptr<Graph>(new Graph(std::move(sparser), std::move(oparser),
+        mcl_out_path, mcl_group,
         num_threads));
 }
 
 Graph::Graph(std::unique_ptr<bioparser::Parser<Sequence>> sparser,
     std::unique_ptr<bioparser::Parser<Overlap>> oparser,
+    const std::string& mcl_out_path,
+    int32_t mcl_group,
     uint32_t num_threads)
         : sparser_(std::move(sparser)), name_to_id_(), piles_(),
         coverage_median_(0), oparser_(std::move(oparser)), is_valid_overlap_(),
         thread_pool_(thread_pool::createThreadPool(num_threads)),
-        nodes_(), edges_() {
+        nodes_(), edges_(), group_reads_(), filter_group(mcl_group >= 0) {
+            if (filter_group) {
+                read_group(mcl_out_path, mcl_group);
+            }
 }
 
 Graph::~Graph() {
@@ -458,6 +466,22 @@ void Graph::preprocess() {
     fprintf(stderr, "[rala::Graph::preprocess] number of low quality reads = %u\n",
         num_low_quality_reads);
     */
+//    read_group();
+    if (filter_group) {
+        uint32_t num_groups_reads = 0;
+        for (auto& it: piles_) {
+            if (it == nullptr) {
+                continue;
+            }
+            if (group_reads_.find(it->id()) == group_reads_.end()) {
+                it.reset();
+            } else {
+                ++num_groups_reads;
+            }
+        }
+        fprintf(stderr, "[rala::Graph::preprocess] number of group's reads = %u\n",
+            num_groups_reads);
+    }
 
     // find chimeric reads
     for (const auto& it: piles_) {
@@ -839,6 +863,32 @@ void Graph::simplify(const std::string& debug_prefix) {
         num_long_edges);
     timer.stop();
     timer.print("[rala::Graph::simplify] elapsed time =");
+}
+
+void Graph::read_group(const std::string& mcl_out_path, int32_t mcl_group) {
+    int32_t current_group = 0;
+    std::ifstream mclinfile(mcl_out_path);
+    if (mclinfile.is_open()) {
+        uint64_t read_id;
+        while (mclinfile >> read_id) {
+            if (current_group == mcl_group) {
+                group_reads_.insert(read_id);
+            }
+
+            // check if new group
+            long curpos; char ch;
+            curpos = mclinfile.tellg();
+            mclinfile.get(ch);
+            mclinfile.seekg(curpos);
+            if ((int)ch == 10) {
+                current_group++;
+            }
+            if (current_group > mcl_group) {
+                break;
+            }
+        }
+    }
+    mclinfile.close();
 }
 
 uint32_t Graph::remove_transitive_edges() {
@@ -1368,6 +1418,12 @@ void Graph::extract_contigs(std::vector<std::unique_ptr<Sequence>>& dst,
         std::string name = ">Ctg" + std::to_string(contig_id);
         name += " RC:i:" + std::to_string(node->sequence_ids_.size());
         name += " LN:i:" + std::to_string(node->data_.size());
+
+        std::ostringstream seqss;
+        std::copy(node->sequence_ids_.begin(), node->sequence_ids_.end() - 1,
+            std::ostream_iterator<int>(seqss, ","));
+        seqss << node->sequence_ids_.back();
+        name += " Seqs:" + seqss.str();
 
         dst.emplace_back(createSequence(name, node->data_));
         ++contig_id;

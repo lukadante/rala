@@ -10,6 +10,7 @@ static const char* version = "v0.7.0";
 
 static struct option options[] = {
     {"include-unassembled", no_argument, 0, 'u'},
+    {"mcl-group", required_argument, 0, 'm'},
     {"debug", required_argument, 0, 'd'},
     {"threads", required_argument, 0, 't'},
     {"version", no_argument, 0, 'v'},
@@ -22,14 +23,18 @@ void help();
 int main(int argc, char** argv) {
 
     uint32_t num_threads = 1;
+    int32_t mcl_group = -1;
     bool drop_unassembled_sequences = true;
     std::string debug_prefix = "";
 
     char opt;
-    while ((opt = getopt_long(argc, argv, "ud:t:h", options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "ud:t:h:m:", options, nullptr)) != -1) {
         switch (opt) {
             case 'u':
                 drop_unassembled_sequences = false;
+                break;
+            case 'm':
+                mcl_group = atoi(optarg);
                 break;
             case 'd':
                 debug_prefix = optarg;
@@ -60,7 +65,10 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    auto graph = rala::createGraph(input_paths[0], input_paths[1], num_threads);
+    auto graph = rala::createGraph(
+        input_paths[0], input_paths[1],
+        input_paths.size() == 3 ? input_paths[2] : "", mcl_group, num_threads
+    );
     graph->construct();
     graph->simplify(debug_prefix);
 
@@ -76,7 +84,7 @@ int main(int argc, char** argv) {
 
 void help() {
     printf(
-        "usage: rala [options ...] <sequences> <overlaps>\n"
+        "usage: rala [options ...] <sequences> <overlaps> <mcl_out>\n"
         "\n"
         "    <sequences>\n"
         "        input file in FASTA/FASTQ format (can be compressed with gzip)\n"
@@ -90,6 +98,8 @@ void help() {
         "            output unassembled sequences (singletons and short contigs)\n"
         "        -d, --debug <string>\n"
         "            enable debug output with given prefix\n"
+        "        -m, --mcl-group <int>\n"
+        "            build only this mcl group\n"
         "        -t, --threads <int>\n"
         "            default: 1\n"
         "            number of threads\n"

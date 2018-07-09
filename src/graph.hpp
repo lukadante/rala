@@ -31,7 +31,8 @@ class Overlap;
 
 class Graph;
 std::unique_ptr<Graph> createGraph(const std::string& sequences_path,
-    const std::string& overlaps_path, uint32_t num_threads);
+    const std::string& overlaps_path, const std::string& mcl_out_path,
+        int32_t mcl_group, uint32_t num_threads);
 
 class Graph {
 public:
@@ -48,6 +49,11 @@ public:
      * @brief Removes transitive edges and tips, pops bubbles
      */
     void simplify(const std::string& debug_prefix);
+
+    /*!
+     * @brief Reads ids of assembly group
+     */
+    void read_group(const std::string& mcl_out_path, int32_t mcl_group);
 
     /*!
      * @brief Removes transitive edge (no information loss)
@@ -99,10 +105,13 @@ public:
     void print_json(std::string path) const;
 
     friend std::unique_ptr<Graph> createGraph(const std::string& sequences_path,
-        const std::string& overlaps_path, uint32_t num_threads);
+        const std::string& overlaps_path, const std::string& mcl_out_path,
+        int32_t mcl_group, uint32_t num_threads);
 private:
     Graph(std::unique_ptr<bioparser::Parser<Sequence>> sparser,
         std::unique_ptr<bioparser::Parser<Overlap>> oparser,
+        const std::string& mcl_out_path,
+        int32_t mcl_group,
         uint32_t num_threads);
     Graph(const Graph&) = delete;
     const Graph& operator=(const Graph&) = delete;
@@ -146,6 +155,8 @@ private:
     std::vector<std::unique_ptr<Node>> nodes_;
     std::vector<std::unique_ptr<Edge>> edges_;
     std::unordered_set<uint64_t> marked_edges_;
+    std::unordered_set<uint64_t> group_reads_;
+    bool filter_group;
 };
 
 }
